@@ -41,7 +41,7 @@ def create_app() -> Flask:
     def get_messages():
         return {
             'data': {
-                'messages': kafka_context.get_messages()
+                'messages': kafka_context.get_last_messages(n=13)
             }
         }
 

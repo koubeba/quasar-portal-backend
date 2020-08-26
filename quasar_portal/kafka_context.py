@@ -2,10 +2,12 @@ from pykafka.cluster import Cluster
 from pykafka.handlers import ThreadingHandler
 from pykafka.broker import Broker
 from pykafka.topic import Topic
+from pykafka.partition import Partition
 from pykafka.balancedconsumer import BalancedConsumer
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from pykafka.common import OffsetType
 from itertools import islice
+import math
 
 
 class KafkaContext:
@@ -35,13 +37,24 @@ class KafkaContext:
         with topic.get_sync_producer() as producer:
             producer.produce(message)
 
-    def get_messages(self) -> str:
+    def get_last_messages(self, n: int) -> Dict[int, str]:
         topics = self.client.topics
         topic: Topic = topics['test']
         consumer: BalancedConsumer = topic.get_balanced_consumer(consumer_group=b'portal',
-                                                                 auto_offset_reset=OffsetType.EARLIEST,
+                                                                 auto_offset_reset=OffsetType.LATEST,
                                                                  reset_offset_on_start=True)
-        return str(consumer.consume().value.decode('utf-8'))
+        n = min(max(consumer.held_offsets.values())+1, n)
+        partitions: List[Partition] = consumer.partitions
+        offsets = [(p, op - n)
+                   for p, op in consumer.held_offsets.items()]
+        # if we want to rewind before the beginning of the partition, limit to beginning
+        offsets = [(partitions[p], (o if o > -1 else -2)) for p, o in offsets]
+        # reset the consumer's offsets
+        consumer.reset_offsets(offsets)
+        result: Dict[int, str] = {}
+        for message in islice(consumer, n):
+            result[int(message.offset)] = message.value.decode('utf-8')
+        return result
 
     def __create_kafka_client(self) -> Cluster:
         print(f'Creating a Kafka Producer with bootstrap servers {self.__bootstrap_servers}')
