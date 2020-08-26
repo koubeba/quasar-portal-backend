@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from typing import Optional
 from .kafka_context import KafkaContext
 import secrets
@@ -11,7 +11,7 @@ def create_app() -> Flask:
     app: Flask = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
         SECRET_KEY=secrets.token_urlsafe(32),
-        KAFKA_BOOTSTRAP_SERVERS='35.241.252.88:9092',
+        KAFKA_BOOTSTRAP_SERVERS='35.241.252.88:9092,34.78.25.50:9092,35.233.58.29:9092',
         ZOOKEEPER_SERVERS='35.241.252.88:2181'
     )
 
@@ -28,20 +28,22 @@ def create_app() -> Flask:
     def index():
         return {'msg': 'Quasar Portal Backend'}
 
-    @app.route('/brokers')
-    def brokers():
-        return str(kafka_context.get_brokers())
+    @app.route('/connected')
+    def connected():
+        connected_brokers: int = kafka_context.get_connection_information()
+        return {
+            'data': {
+                'connected_brokers': connected_brokers
+            }
+        }
 
-    @app.route('/topics')
-    def topics():
-        return str(kafka_context.get_topics())
-
-    # @app.route('/connected')
-    # def connected():
-    #     if kafka_context.producer_connected():
-    #         return 'Connected'
-    #     else:
-    #         return 'Not Connected'
+    @app.route('/get_messages')
+    def get_messages():
+        return {
+            'data': {
+                'messages': kafka_context.get_messages()
+            }
+        }
 
     @app.route('/send_message')
     def send_message():
