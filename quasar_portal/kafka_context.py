@@ -7,7 +7,6 @@ from pykafka.balancedconsumer import BalancedConsumer
 from typing import Dict, List, Optional
 from pykafka.common import OffsetType
 from itertools import islice
-import math
 
 
 class KafkaContext:

@@ -1,10 +1,12 @@
 from flask import Flask, request
-from typing import Optional
+from typing import Any, Optional
 from .kafka_context import KafkaContext
+import json
 import secrets
 
 
 kafka_context: Optional[KafkaContext] = None
+ENCODING: str = 'utf-8'
 
 
 def create_app() -> Flask:
@@ -28,7 +30,7 @@ def create_app() -> Flask:
     def index():
         return {'msg': 'Quasar Portal Backend'}
 
-    @app.route('/connected')
+    @app.route('/connected', methods=['GET'])
     def connected():
         connected_brokers: int = kafka_context.get_connection_information()
         return {
@@ -37,17 +39,22 @@ def create_app() -> Flask:
             }
         }
 
-    @app.route('/get_messages')
+    @app.route('/get_messages', methods=['GET'])
     def get_messages():
+        messages_count: int = request.args.get('count', default=10, type=int)
         return {
             'data': {
-                'messages': kafka_context.get_last_messages(n=13)
+                'messages': kafka_context.get_last_messages(n=messages_count)
             }
         }
 
-    @app.route('/send_message')
+    @app.route('/send_message', methods=['POST'])
     def send_message():
-        kafka_context.send_message(b'hello!!!')
-        return 'sent!'
+        message: Optional[Any] = request.get_json()
+        if message:
+            kafka_context.send_message(json.dumps(message).encode(ENCODING))
+            return 'Sent!'
+        else:
+            return 'No message was provided'
 
     return app
