@@ -1,26 +1,39 @@
 from flask import Flask, request
 from flask_cors import CORS
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 from .kafka_context import KafkaContext
+from .errors.configuration_error import ConfigurationError
 import json
 import secrets
+import os
 
 
 kafka_context: Optional[KafkaContext] = None
 ENCODING: str = 'utf-8'
 
+KAFKA_BROKERS_KEY: str = "kafka_brokers"
+ZOOKEEPER_SERVER_KEY: str = "zookeeper_server"
+CONF_KEYS: List[str] = [KAFKA_BROKERS_KEY, ZOOKEEPER_SERVER_KEY]
+
+
+def read_json_configuration() -> Dict[str, str]:
+    with open(f'{os.path.dirname(os.path.realpath(__file__))}/kafka_configuration.json') as conf:
+        data = json.load(conf)
+
+    if not all(k in data for k in CONF_KEYS):
+        raise ConfigurationError([KAFKA_BROKERS_KEY])
+    return data
+
 
 def create_app() -> Flask:
     app: Flask = Flask(__name__, instance_relative_config=True)
+    configuration: Dict[str, str] = read_json_configuration()
     app.config.from_mapping(
         SECRET_KEY=secrets.token_urlsafe(32),
-        KAFKA_BOOTSTRAP_SERVERS='35.187.31.167:9092,34.78.25.50:9092,35.233.58.29:9092',
-        ZOOKEEPER_SERVERS='35.187.31.167:2181'
+        KAFKA_BOOTSTRAP_SERVERS= configuration[KAFKA_BROKERS_KEY],
+        ZOOKEEPER_SERVERS= configuration[ZOOKEEPER_SERVER_KEY]
     )
     CORS(app)
-
-    from . import kafka_connector
-    kafka_connector.init_app(app)
 
     @app.before_first_request
     def create_kafka_context():

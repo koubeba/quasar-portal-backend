@@ -90,3 +90,4 @@ class KafkaContext:
 
     def __get_brokers(self) -> Dict[str, Broker]:
         return self.client.brokers
+
