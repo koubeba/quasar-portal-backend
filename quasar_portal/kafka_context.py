@@ -8,6 +8,12 @@ from typing import Dict, List, Optional
 from pykafka.common import OffsetType
 from itertools import islice
 
+from .errors.topic_not_existing import TopicNotExisting
+
+
+IN_PREFIX: str = 'in-'
+OUT_PREFIX: str = 'out-'
+
 
 class KafkaContext:
     def __init__(self, bootstrap_servers: str, zookeeper_servers: str):
@@ -30,25 +36,15 @@ class KafkaContext:
                 connected += 1
         return connected
 
-    def send_file_data(self, message):
-        # TODO: validate file data
-        topics = self.client.topics
-        topic: Topic = topics['sent_files']
-        with topic.get_sync_producer() as producer:
-            producer.produce(message)
-
-    def send_message(self, message):
-        topics = self.client.topics
-        topic: Topic = topics['test']
-        with topic.get_sync_producer() as producer:
+    def send_message(self, topic_name: str, message):
+        with self.__get_topic(topic_name).get_sync_producer() as producer:
             producer.produce(message)
 
     def get_last_messages_offset(self, topic_name: str = 'test') -> int:
-        topics = self.client.topics
-        topic: Topic = topics[topic_name]
-        consumer: BalancedConsumer = topic.get_balanced_consumer(consumer_group=b'portal',
-                                                                 auto_offset_reset=OffsetType.LATEST,
-                                                                 reset_offset_on_start=True)
+        consumer: BalancedConsumer = self.__get_topic(topic_name)\
+            .get_balanced_consumer(consumer_group=b'portal',
+                                   auto_offset_reset=OffsetType.LATEST,
+                                   reset_offset_on_start=True)
         partition_names: List[str] = list(consumer.partitions.keys())
         if partition_names:
             partition: Partition = consumer.partitions.__getitem__(partition_names[0])
@@ -56,12 +52,10 @@ class KafkaContext:
         return 0
 
     def get_last_messages(self, n: int, topic_name: str = 'test') -> Dict[int, str]:
-        topics = self.client.topics
-        topic: Topic = topics[topic_name]
-        consumer: BalancedConsumer = topic.get_balanced_consumer(consumer_group=b'portal',
-                                                                 auto_offset_reset=OffsetType.LATEST,
-                                                                 reset_offset_on_start=True)
-
+        consumer: BalancedConsumer = self.__get_topic(topic_name)\
+            .get_balanced_consumer(consumer_group=b'portal',
+                                   auto_offset_reset=OffsetType.LATEST,
+                                   reset_offset_on_start=True)
         if consumer.held_offsets:
             n = min(max(consumer.held_offsets.values())+1, n)
             partitions: List[Partition] = consumer.partitions
@@ -76,11 +70,14 @@ class KafkaContext:
             result[int(message.offset)] = message.value.decode('utf-8')
         return result
 
-    def get_last_sent_files_offset(self) -> int:
-        return self.get_last_messages_offset(topic_name='sent_files')
+    def list_topics(self) -> List[str]:
+        return [t.decode('utf-8') for t in list(self.client.topics.keys())]
 
-    def get_last_sent_files(self, n: int) -> Dict[int, str]:
-        return self.get_last_messages(n, topic_name='sent_files')
+    def list_in_topics(self) -> List[str]:
+        return [topic for topic in self.list_topics() if topic.startswith(IN_PREFIX)]
+
+    def list_out_topics(self) -> List[str]:
+        return [topic for topic in self.list_topics() if topic.startswith(OUT_PREFIX)]
 
     def __create_kafka_client(self) -> Cluster:
         print(f'Creating a Kafka Producer with bootstrap servers {self.__bootstrap_servers}')
@@ -91,3 +88,9 @@ class KafkaContext:
     def __get_brokers(self) -> Dict[str, Broker]:
         return self.client.brokers
 
+    def __get_topic(self, topic_name: str) -> Topic:
+        topics = self.client.topics
+        binary_topic_name = topic_name.encode('utf-8')
+        if binary_topic_name not in topics:
+            raise TopicNotExisting(topic_name)
+        return topics[topic_name]

@@ -1,19 +1,26 @@
 from flask import Flask, request
 from flask_cors import CORS
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from .kafka_context import KafkaContext
+from .avro_schema_store import AvroSchemaStore
+from .gcs_connector import GCSConnector
 from .errors.configuration_error import ConfigurationError
+from .errors.topic_not_existing import TopicNotExisting
 import json
 import secrets
 import os
 
 
 kafka_context: Optional[KafkaContext] = None
+gcs_connector: Optional[GCSConnector] = None
 ENCODING: str = 'utf-8'
 
 KAFKA_BROKERS_KEY: str = "kafka_brokers"
 ZOOKEEPER_SERVER_KEY: str = "zookeeper_server"
 CONF_KEYS: List[str] = [KAFKA_BROKERS_KEY, ZOOKEEPER_SERVER_KEY]
+
+
+BAD_REQUEST: int = 400
 
 
 def read_json_configuration() -> Dict[str, str]:
@@ -23,6 +30,12 @@ def read_json_configuration() -> Dict[str, str]:
     if not all(k in data for k in CONF_KEYS):
         raise ConfigurationError([KAFKA_BROKERS_KEY])
     return data
+
+
+def handle_topic_not_existing(topic_name: str) -> Tuple[Dict[str, str], int]:
+    return ({
+        'error': f'Topic {topic_name} not existing'
+    }, BAD_REQUEST)
 
 
 def create_app() -> Flask:
@@ -36,10 +49,11 @@ def create_app() -> Flask:
     CORS(app)
 
     @app.before_first_request
-    def create_kafka_context():
-        global kafka_context
+    def create_context():
+        global kafka_context, avro_schema_store, gcs_connector
         kafka_context = KafkaContext(bootstrap_servers=app.config['KAFKA_BOOTSTRAP_SERVERS'],
                                      zookeeper_servers=app.config['ZOOKEEPER_SERVERS'])
+        gcs_connector = GCSConnector()
 
     @app.route('/')
     def index():
@@ -54,56 +68,95 @@ def create_app() -> Flask:
             }
         }
 
-    @app.route('/get_messages_offset', methods=['GET'])
-    def get_messages_offset():
+    @app.route('/list_all_topics', methods=['GET'])
+    def list_all_topics():
         return {
             'data': {
-                'offset': kafka_context.get_last_messages_offset()
+                'topics': kafka_context.list_topics()
             }
         }
+
+    @app.route('/list_in_topics', methods=['GET'])
+    def list_in_topics():
+        return {
+            'data': {
+                'topics': kafka_context.list_in_topics()
+            }
+        }
+
+    @app.route('/list_out_topics', methods=['GET'])
+    def list_out_topics():
+        return {
+            'data': {
+                'topics': kafka_context.list_out_topics()
+            }
+        }
+
+    @app.route('/list_models', methods=['GET'])
+    def list_models():
+        return {
+            'data': {
+                'models': gcs_connector.list_models()
+            }
+        }
+
+    @app.route('/get_schema', methods=['GET'])
+    def get_schema():
+        topic_name: str = request.args.get('topic', type=str)
+        file_format: str = request.args.get('format', type=str)
+        try:
+            return {
+                'data': {
+                    'schema': gcs_connector.fetch_schema(in_topic=topic_name[:2],
+                                                         topic_name=topic_name[3:],
+                                                         file_format=file_format)
+                }
+            }
+        except TopicNotExisting:
+            error_json, error_code = handle_topic_not_existing(topic_name)
+            return error_json, error_code
+        # TODO: add format error if anything else than CSV or JSON
+
+    @app.route('/get_messages_offset', methods=['GET'])
+    def get_messages_offset():
+        topic_name: str = request.args.get('topic', type=str)
+        try:
+            return {
+                'data': {
+                    'offset': kafka_context.get_last_messages_offset()
+                }
+            }
+        except TopicNotExisting:
+            error_json, error_code = handle_topic_not_existing(topic_name)
+            return error_json, error_code
 
     @app.route('/get_messages', methods=['GET'])
     def get_messages():
+        topic_name: str = request.args.get('topic', type=str)
         messages_count: int = request.args.get('count', default=10, type=int)
-        return {
-            'data': {
-                'messages': kafka_context.get_last_messages(n=messages_count)
+        try:
+            return {
+                'data': {
+                    'messages': kafka_context.get_last_messages(n=messages_count)
+                }
             }
-        }
-
-    @app.route('/get_sent_files_offset', methods=['GET'])
-    def get_files_offset():
-        return {
-            'data': {
-                'offset': kafka_context.get_last_sent_files_offset()
-            }
-        }
-
-    @app.route('/get_sent_files', methods=['GET'])
-    def get_sent_files():
-        messages_count: int = request.args.get('count', default=10, type=int)
-        return {
-            'data': {
-                'messages': kafka_context.get_last_sent_files(n=messages_count)
-            }
-        }
+        except TopicNotExisting:
+            error_json, error_code = handle_topic_not_existing(topic_name)
+            return error_json, error_code
 
     @app.route('/send_message', methods=['POST'])
     def send_message():
-        message: Optional[Any] = request.get_json()
+        topic_name: str = request.args.get('topic', type=str)
+        print(request.get_data())
+        message: Optional[Any] = request.get_data()
         if message:
-            kafka_context.send_message(json.dumps(message).encode(ENCODING))
-            return 'Sent!'
+            try:
+                kafka_context.send_message(topic_name, message)
+            except TopicNotExisting:
+                error_json, error_code = handle_topic_not_existing(topic_name)
+                return error_json, error_code
+            return f'Sent message to topic {topic_name}!'
         else:
-            return 'No message was provided'
-
-    @app.route('/send_file_data', methods=['POST'])
-    def send_file_data():
-        message: Optional[Any] = request.get_json()
-        if message:
-            kafka_context.send_file_data(json.dumps(message).encode(ENCODING))
-            return 'Sent!'
-        else:
-            return 'No message was provided'
+            return 'No message was provided', BAD_REQUEST
 
     return app
