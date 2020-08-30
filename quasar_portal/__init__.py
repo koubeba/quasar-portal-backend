@@ -78,9 +78,10 @@ def create_app() -> Flask:
 
     @app.route('/list_in_topics', methods=['GET'])
     def list_in_topics():
+        file_format: str = request.args.get('format', type=str)
         return {
             'data': {
-                'topics': kafka_context.list_in_topics()
+                'topics': kafka_context.list_in_topics(file_format)
             }
         }
 
@@ -103,12 +104,13 @@ def create_app() -> Flask:
     @app.route('/get_schema', methods=['GET'])
     def get_schema():
         topic_name: str = request.args.get('topic', type=str)
-        file_format: str = request.args.get('format', type=str)
+        in_out, topic_name = topic_name.split('-', 1)
+        topic_name, file_format = topic_name.rsplit('-', 1)
         try:
             return {
                 'data': {
-                    'schema': gcs_connector.fetch_schema(in_topic=topic_name[:2],
-                                                         topic_name=topic_name[3:],
+                    'schema': gcs_connector.fetch_schema(in_topic=in_out,
+                                                         topic_name=topic_name,
                                                          file_format=file_format)
                 }
             }
@@ -137,7 +139,7 @@ def create_app() -> Flask:
         try:
             return {
                 'data': {
-                    'messages': kafka_context.get_last_messages(n=messages_count)
+                    'messages': kafka_context.get_last_messages(topic_name=topic_name, n=messages_count)
                 }
             }
         except TopicNotExisting:
@@ -147,7 +149,6 @@ def create_app() -> Flask:
     @app.route('/send_message', methods=['POST'])
     def send_message():
         topic_name: str = request.args.get('topic', type=str)
-        print(request.get_data())
         message: Optional[Any] = request.get_data()
         if message:
             try:

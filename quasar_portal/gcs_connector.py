@@ -1,6 +1,5 @@
 from google.cloud import storage
 from typing import Dict, List
-import ndjson
 
 
 def pretty_print_dirname(dirname: str) -> str:

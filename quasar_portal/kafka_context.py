@@ -51,7 +51,7 @@ class KafkaContext:
             return partition.latest_available_offset()
         return 0
 
-    def get_last_messages(self, n: int, topic_name: str = 'test') -> Dict[int, str]:
+    def get_last_messages(self, n: int, topic_name: str = 'test') -> str:
         consumer: BalancedConsumer = self.__get_topic(topic_name)\
             .get_balanced_consumer(consumer_group=b'portal',
                                    auto_offset_reset=OffsetType.LATEST,
@@ -65,16 +65,16 @@ class KafkaContext:
             offsets = [(partitions[p], (o if o > -1 else -2)) for p, o in offsets]
             # reset the consumer's offsets
             consumer.reset_offsets(offsets)
-        result: Dict[int, str] = {}
+        result: Dict[int, bytes] = {}
         for message in islice(consumer, n):
-            result[int(message.offset)] = message.value.decode('utf-8')
-        return result
+            result[int(message.offset)] = message.value
+        return str(result)
 
     def list_topics(self) -> List[str]:
         return [t.decode('utf-8') for t in list(self.client.topics.keys())]
 
-    def list_in_topics(self) -> List[str]:
-        return [topic for topic in self.list_topics() if topic.startswith(IN_PREFIX)]
+    def list_in_topics(self, file_format: str) -> List[str]:
+        return [topic for topic in self.list_topics() if (topic.startswith(IN_PREFIX) and topic.endswith(file_format.lower()))]
 
     def list_out_topics(self) -> List[str]:
         return [topic for topic in self.list_topics() if topic.startswith(OUT_PREFIX)]
