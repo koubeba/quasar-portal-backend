@@ -4,9 +4,11 @@ from pykafka.broker import Broker
 from pykafka.topic import Topic
 from pykafka.partition import Partition
 from pykafka.balancedconsumer import BalancedConsumer
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from pykafka.common import OffsetType
 from itertools import islice
+from datetime import datetime
+from collections import defaultdict
 
 from .errors.topic_not_existing import TopicNotExisting
 
@@ -38,7 +40,7 @@ class KafkaContext:
 
     def send_message(self, topic_name: str, message):
         with self.__get_topic(topic_name).get_sync_producer() as producer:
-            producer.produce(message)
+            producer.produce(message, timestamp=datetime.now())
 
     def get_last_messages_offset(self, topic_name: str = 'test') -> int:
         consumer: BalancedConsumer = self.__get_topic(topic_name)\
@@ -51,7 +53,29 @@ class KafkaContext:
             return partition.latest_available_offset()
         return 0
 
-    def get_last_messages(self, n: int, topic_name: str = 'test') -> str:
+    def get_in_topics_offsets(self) -> List[Dict[str, int]]:
+        def format_topic_name(topic_name: str) -> str:
+            return topic_name\
+                .replace(f'-csv', '')\
+                .replace(f'-json', '')\
+                .replace('in-', '')
+
+        in_topics: Set[str] = set([format_topic_name(topic) for topic in self.list_topics() if (topic.startswith(IN_PREFIX))])
+        results: List[Dict[str, int]] = []
+
+        for topic in in_topics:
+            result: Dict[str, Any] = defaultdict(dict)
+            result["topic_name"] = topic
+            for format_name in ['csv', 'json']:
+                try:
+                    result[format_name] = self.get_last_messages_offset(f'in-{topic}-{format_name}')
+                except TopicNotExisting:
+                    result[format_name] = 0
+            results.append(result)
+
+        return results
+
+    def get_last_messages(self, n: int, topic_name: str = 'test') -> List[Dict[str, str]]:
         consumer: BalancedConsumer = self.__get_topic(topic_name)\
             .get_balanced_consumer(consumer_group=b'portal',
                                    auto_offset_reset=OffsetType.LATEST,
@@ -65,10 +89,11 @@ class KafkaContext:
             offsets = [(partitions[p], (o if o > -1 else -2)) for p, o in offsets]
             # reset the consumer's offsets
             consumer.reset_offsets(offsets)
-        result: Dict[int, bytes] = {}
+        result: List[Dict[str, str]] = []
         for message in islice(consumer, n):
-            result[int(message.offset)] = message.value
-        return str(result)
+            result.append({"value": message.value.decode('utf-8'),
+                           "timestamp": message.timestamp})
+        return result
 
     def list_topics(self) -> List[str]:
         return [t.decode('utf-8') for t in list(self.client.topics.keys())]
@@ -83,7 +108,8 @@ class KafkaContext:
         print(f'Creating a Kafka Producer with bootstrap servers {self.__bootstrap_servers}')
         return Cluster(hosts=self.__bootstrap_servers,
                        handler=ThreadingHandler(),
-                       zookeeper_hosts=self.__zookeper_servers)
+                       zookeeper_hosts=self.__zookeper_servers,
+                       broker_version="1.0.0")
 
     def __get_brokers(self) -> Dict[str, Broker]:
         return self.client.brokers

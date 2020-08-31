@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, Response
 from flask_cors import CORS
 from typing import Any, Dict, List, Optional, Tuple
 from .kafka_context import KafkaContext
@@ -105,19 +105,36 @@ def create_app() -> Flask:
     def get_schema():
         topic_name: str = request.args.get('topic', type=str)
         in_out, topic_name = topic_name.split('-', 1)
-        topic_name, file_format = topic_name.rsplit('-', 1)
         try:
-            return {
-                'data': {
-                    'schema': gcs_connector.fetch_schema(in_topic=in_out,
-                                                         topic_name=topic_name,
-                                                         file_format=file_format)
+            if in_out.lower() == 'in':
+                topic_name, file_format = topic_name.rsplit('-', 1)
+                return {
+                    'data': {
+                        'schema': gcs_connector.fetch_schema(in_topic=in_out,
+                                                             topic_name=topic_name,
+                                                             file_format=file_format)
+                    }
                 }
-            }
+            else:
+                return {
+                    'data': {
+                        'schema': gcs_connector.fetch_schema(in_topic=in_out,
+                                                             topic_name=topic_name,
+                                                             file_format=None)
+                    }
+                }
         except TopicNotExisting:
             error_json, error_code = handle_topic_not_existing(topic_name)
             return error_json, error_code
         # TODO: add format error if anything else than CSV or JSON
+
+    @app.route('/get_in_topics_offsets', methods=['GET'])
+    def get_in_topics_offsets():
+        return {
+            'data': {
+                'topic_offsets': kafka_context.get_in_topics_offsets()
+            }
+        }
 
     @app.route('/get_messages_offset', methods=['GET'])
     def get_messages_offset():
@@ -125,7 +142,7 @@ def create_app() -> Flask:
         try:
             return {
                 'data': {
-                    'offset': kafka_context.get_last_messages_offset()
+                    'offset': kafka_context.get_last_messages_offset(topic_name)
                 }
             }
         except TopicNotExisting:
@@ -138,8 +155,8 @@ def create_app() -> Flask:
         messages_count: int = request.args.get('count', default=10, type=int)
         try:
             return {
-                'data': {
-                    'messages': kafka_context.get_last_messages(topic_name=topic_name, n=messages_count)
+                "data": {
+                    "messages": kafka_context.get_last_messages(topic_name=topic_name, n=messages_count)
                 }
             }
         except TopicNotExisting:
