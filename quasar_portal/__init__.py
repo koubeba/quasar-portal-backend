@@ -1,4 +1,5 @@
 from flask import Flask, request
+from flask_caching import Cache
 from flask_cors import CORS
 from typing import Any, Dict, List, Optional, Tuple
 from .kafka_context import KafkaContext
@@ -44,7 +45,9 @@ def create_app() -> Flask:
         KAFKA_BOOTSTRAP_SERVERS= configuration[KAFKA_BROKERS_KEY],
         ZOOKEEPER_SERVERS= configuration[ZOOKEEPER_SERVER_KEY]
     )
+    cache = Cache(config={'CACHE_TYPE': 'simple'})
     CORS(app)
+    cache.init_app(app)
 
     @app.before_first_request
     def create_context():
@@ -58,6 +61,7 @@ def create_app() -> Flask:
         return {'msg': 'Quasar Portal Backend'}
 
     @app.route('/connected', methods=['GET'])
+    @cache.cached(timeout=60)
     def connected():
         connected_brokers: int = kafka_context.get_connection_information()
         return {
@@ -67,6 +71,7 @@ def create_app() -> Flask:
         }
 
     @app.route('/list_all_topics', methods=['GET'])
+    @cache.cached(timeout=60)
     def list_all_topics():
         return {
             'data': {
@@ -75,6 +80,7 @@ def create_app() -> Flask:
         }
 
     @app.route('/list_in_topics', methods=['GET'])
+    @cache.cached(timeout=60)
     def list_in_topics():
         file_format: str = request.args.get('format', type=str)
         return {
@@ -84,6 +90,7 @@ def create_app() -> Flask:
         }
 
     @app.route('/list_out_topics', methods=['GET'])
+    @cache.cached(timeout=60)
     def list_out_topics():
         return {
             'data': {
@@ -92,6 +99,7 @@ def create_app() -> Flask:
         }
 
     @app.route('/list_models', methods=['GET'])
+    @cache.cached(timeout=300)
     def list_models():
         return {
             'data': {
@@ -100,6 +108,7 @@ def create_app() -> Flask:
         }
 
     @app.route('/get_schema', methods=['GET'])
+    @cache.cached(timeout=300)
     def get_schema():
         topic_name: str = request.args.get('topic', type=str)
         in_out, topic_name = topic_name.split('-', 1)

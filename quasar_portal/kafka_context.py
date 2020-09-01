@@ -9,27 +9,25 @@ from pykafka.common import OffsetType
 from itertools import islice
 from datetime import datetime
 from collections import defaultdict
-
+import cachetools.func
 from .errors.topic_not_existing import TopicNotExisting
-
 
 IN_PREFIX: str = 'in-'
 OUT_PREFIX: str = 'out-'
 
 
-
 class KafkaContext:
     def __init__(self, bootstrap_servers: str, zookeeper_servers: str):
-        print(f'Creating Kafka Context with bootstrap servers {bootstrap_servers} and zookeeper servers {zookeeper_servers}...')
+        print(
+            f'Creating Kafka Context with bootstrap servers {bootstrap_servers} and zookeeper servers {zookeeper_servers}...')
         self.__bootstrap_servers = bootstrap_servers
         self.__zookeper_servers = zookeeper_servers
         self.__client__: Optional[Cluster] = None
 
     @property
+    @cachetools.func.ttl_cache(ttl=300)
     def client(self) -> Cluster:
-        if not self.__client__:
-            self.__client__ = self.__create_kafka_client()
-        return self.__client__
+        return self.__create_kafka_client()
 
     def get_connection_information(self) -> int:
         brokers: Dict[str, Broker] = self.__get_brokers()
@@ -44,7 +42,7 @@ class KafkaContext:
             producer.produce(message, timestamp=datetime.now())
 
     def get_last_messages_offset(self, topic_name: str = 'test') -> int:
-        consumer: BalancedConsumer = self.__get_topic(topic_name)\
+        consumer: BalancedConsumer = self.__get_topic(topic_name) \
             .get_balanced_consumer(consumer_group=b'portal',
                                    auto_offset_reset=OffsetType.LATEST,
                                    reset_offset_on_start=True)
@@ -56,12 +54,13 @@ class KafkaContext:
 
     def get_in_topics_offsets(self) -> List[Dict[str, int]]:
         def format_topic_name(topic_name: str) -> str:
-            return topic_name\
-                .replace(f'-csv', '')\
-                .replace(f'-json', '')\
+            return topic_name \
+                .replace(f'-csv', '') \
+                .replace(f'-json', '') \
                 .replace('in-', '')
 
-        in_topics: Set[str] = set([format_topic_name(topic) for topic in self.list_topics() if (topic.startswith(IN_PREFIX))])
+        in_topics: Set[str] = set(
+            [format_topic_name(topic) for topic in self.list_topics() if (topic.startswith(IN_PREFIX))])
         results: List[Dict[str, int]] = []
 
         for topic in in_topics:
@@ -77,12 +76,12 @@ class KafkaContext:
         return results
 
     def get_last_messages(self, n: int, topic_name: str = 'test') -> List[Dict[str, str]]:
-        consumer: BalancedConsumer = self.__get_topic(topic_name)\
+        consumer: BalancedConsumer = self.__get_topic(topic_name) \
             .get_balanced_consumer(consumer_group=b'portal',
                                    auto_offset_reset=OffsetType.LATEST,
                                    reset_offset_on_start=True)
         if consumer.held_offsets:
-            n = min(max(consumer.held_offsets.values())+1, n)
+            n = min(max(consumer.held_offsets.values()) + 1, n)
             partitions: List[Partition] = consumer.partitions
             offsets = [(p, op - n)
                        for p, op in consumer.held_offsets.items()]
@@ -100,7 +99,8 @@ class KafkaContext:
         return [t.decode('utf-8') for t in list(self.client.topics.keys())]
 
     def list_in_topics(self, file_format: str) -> List[str]:
-        return [topic for topic in self.list_topics() if (topic.startswith(IN_PREFIX) and topic.endswith(file_format.lower()))]
+        return [topic for topic in self.list_topics() if
+                (topic.startswith(IN_PREFIX) and topic.endswith(file_format.lower()))]
 
     def list_out_topics(self) -> List[str]:
         return [topic for topic in self.list_topics() if topic.startswith(OUT_PREFIX)]
