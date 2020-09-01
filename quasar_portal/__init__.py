@@ -13,7 +13,6 @@ import os
 kafka_context: Optional[KafkaContext] = None
 gcs_connector: Optional[GCSConnector] = None
 ENCODING: str = 'utf-8'
-
 KAFKA_BROKERS_KEY: str = "kafka_brokers"
 ZOOKEEPER_SERVER_KEY: str = "zookeeper_server"
 CONF_KEYS: List[str] = [KAFKA_BROKERS_KEY, ZOOKEEPER_SERVER_KEY]
