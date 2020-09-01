@@ -39,7 +39,7 @@ class KafkaContext:
         return connected
 
     def send_message(self, topic_name: str, message):
-        with self.__get_topic(topic_name).get_sync_producer() as producer:
+        with self.__get_topic(topic_name).get_producer() as producer:
             producer.produce(message, timestamp=datetime.now())
 
     def get_last_messages_offset(self, topic_name: str = 'test') -> int:
