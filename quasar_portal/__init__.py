@@ -1,8 +1,7 @@
-from flask import Flask, request, Response
+from flask import Flask, request
 from flask_cors import CORS
 from typing import Any, Dict, List, Optional, Tuple
 from .kafka_context import KafkaContext
-from .avro_schema_store import AvroSchemaStore
 from .gcs_connector import GCSConnector
 from .errors.configuration_error import ConfigurationError
 from .errors.topic_not_existing import TopicNotExisting
@@ -50,7 +49,7 @@ def create_app() -> Flask:
 
     @app.before_first_request
     def create_context():
-        global kafka_context, avro_schema_store, gcs_connector
+        global kafka_context, gcs_connector
         kafka_context = KafkaContext(bootstrap_servers=app.config['KAFKA_BOOTSTRAP_SERVERS'],
                                      zookeeper_servers=app.config['ZOOKEEPER_SERVERS'])
         gcs_connector = GCSConnector()
