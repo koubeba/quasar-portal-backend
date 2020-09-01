@@ -1,3 +1,4 @@
+avro==1.10.0
 cachelib==0.1.1
 cachetools==4.1.1
 certifi==2020.6.20
@@ -5,6 +6,7 @@ cffi==1.14.2
 chardet==3.0.4
 click==7.1.2
 Flask==1.1.2
+Flask-Caching==1.9.0
 Flask-Cors==3.0.8
 google-api-core==1.22.1
 google-auth==1.21.0
