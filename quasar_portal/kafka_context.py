@@ -17,6 +17,7 @@ IN_PREFIX: str = 'in-'
 OUT_PREFIX: str = 'out-'
 
 
+
 class KafkaContext:
     def __init__(self, bootstrap_servers: str, zookeeper_servers: str):
         print(f'Creating Kafka Context with bootstrap servers {bootstrap_servers} and zookeeper servers {zookeeper_servers}...')
