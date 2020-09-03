@@ -4,6 +4,7 @@ from pykafka.broker import Broker
 from pykafka.topic import Topic
 from pykafka.partition import Partition
 from pykafka.balancedconsumer import BalancedConsumer
+from pykafka.exceptions import SocketDisconnectedError, LeaderNotAvailable
 from typing import Any, Dict, List, Optional, Set
 from pykafka.common import OffsetType
 from itertools import islice
@@ -11,9 +12,11 @@ from datetime import datetime
 from collections import defaultdict
 import cachetools.func
 from .errors.topic_not_existing import TopicNotExisting
+from .errors.connection_error import BrokerConnectionError
 
-IN_PREFIX: str = 'in-'
-OUT_PREFIX: str = 'out-'
+
+from .file_format import FileFormat
+from .topic_type import TopicType
 
 
 class KafkaContext:
@@ -31,15 +34,15 @@ class KafkaContext:
 
     def get_connection_information(self) -> int:
         brokers: Dict[str, Broker] = self.__get_brokers()
-        connected: int = 0
-        for broker_key in brokers.keys():
-            if brokers.__getitem__(broker_key).connected:
-                connected += 1
-        return connected
+        return sum([1 for broker_key in brokers.keys() if brokers.__getitem__(broker_key).connected])
 
     def send_message(self, topic_name: str, message):
         with self.__get_topic(topic_name).get_producer() as producer:
-            producer.produce(message, timestamp=datetime.now())
+            try:
+                producer.produce(message, timestamp=datetime.now())
+            except (SocketDisconnectedError, LeaderNotAvailable):
+                producer.stop()
+                raise BrokerConnectionError()
 
     def get_last_messages_offset(self, topic_name: str = 'test') -> int:
         consumer: BalancedConsumer = self.__get_topic(topic_name) \
@@ -47,26 +50,28 @@ class KafkaContext:
                                    auto_offset_reset=OffsetType.LATEST,
                                    reset_offset_on_start=True)
         partition_names: List[str] = list(consumer.partitions.keys())
+        last_offsets: int = 0
         if partition_names:
             partition: Partition = consumer.partitions.__getitem__(partition_names[0])
-            return partition.latest_available_offset()
-        return 0
+            last_offsets = partition.latest_available_offset()
+        consumer.stop()
+        return last_offsets
 
     def get_in_topics_offsets(self) -> List[Dict[str, int]]:
         def format_topic_name(topic_name: str) -> str:
             return topic_name \
-                .replace(f'-csv', '') \
-                .replace(f'-json', '') \
-                .replace('in-', '')
+                .replace(FileFormat.CSV.to_suffix(), '') \
+                .replace(FileFormat.JSON.to_suffix(), '') \
+                .replace(TopicType.INCOMING.to_prefix(), '')
 
         in_topics: Set[str] = set(
-            [format_topic_name(topic) for topic in self.list_topics() if (topic.startswith(IN_PREFIX))])
+            [format_topic_name(topic) for topic in self.list_topics() if (topic.startswith(TopicType.INCOMING.to_prefix()))])
         results: List[Dict[str, int]] = []
 
         for topic in in_topics:
             result: Dict[str, Any] = defaultdict(dict)
             result["topic_name"] = topic
-            for format_name in ['csv', 'json']:
+            for format_name in [str(FileFormat.CSV), str(FileFormat.JSON)]:
                 try:
                     result[format_name] = self.get_last_messages_offset(f'in-{topic}-{format_name}')
                 except TopicNotExisting:
@@ -88,9 +93,15 @@ class KafkaContext:
             offsets = [(partitions[p], (o if o > -1 else -2)) for p, o in offsets]
             consumer.reset_offsets(offsets)
         result: List[Dict[str, str]] = []
-        for message in islice(consumer, n):
-            result.append({"value": message.value.decode('utf-8'),
-                           "timestamp": message.timestamp})
+        try:
+            for message in islice(consumer, n):
+                result.append({"value": message.value.decode('utf-8'),
+                               "timestamp": message.timestamp})
+        except SocketDisconnectedError:
+            consumer.stop()
+            raise BrokerConnectionError()
+        finally:
+            consumer.stop()
         return result
 
     def list_topics(self) -> List[str]:
@@ -98,10 +109,10 @@ class KafkaContext:
 
     def list_in_topics(self, file_format: str) -> List[str]:
         return [topic for topic in self.list_topics() if
-                (topic.startswith(IN_PREFIX) and topic.endswith(file_format.lower()))]
+                (topic.startswith(TopicType.INCOMING.to_prefix()) and topic.endswith(file_format.lower()))]
 
     def list_out_topics(self) -> List[str]:
-        return [topic for topic in self.list_topics() if topic.startswith(OUT_PREFIX)]
+        return [topic for topic in self.list_topics() if topic.startswith(TopicType.OUTCOMING.to_prefix())]
 
     def __create_kafka_cluster(self) -> Cluster:
         print(f'Creating a Kafka Cluster with bootstrap servers {self.__bootstrap_servers}')

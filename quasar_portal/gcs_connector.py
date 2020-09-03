@@ -1,6 +1,10 @@
 from google.cloud import storage
 from typing import List, Optional
 
+from .topic_type import TopicType
+from .file_format import FileFormat
+from .errors.invalid_format import InvalidFormat
+
 
 def pretty_print_dirname(dirname: str) -> str:
     return dirname.replace('/', '').replace('_', ' ').title()
@@ -16,8 +20,12 @@ class GCSConnector:
             "quasar_models", delimiter="/")]
         return model_types
 
-    def fetch_schema(self, topic_name: str, topic_prefix: str = "in", file_format: Optional[str] = None) -> str:
-        if topic_prefix == "in" and file_format:
+    def fetch_schema(self, topic_name: str,
+                     topic_prefix: str = str(TopicType.INCOMING), file_format: Optional[str] = None) -> str:
+        if file_format not in [str(ff) for ff in FileFormat]:
+            raise InvalidFormat(file_format)
+
+        if topic_prefix == str(TopicType.INCOMING) and file_format:
             file_name: str = f'in/{file_format.lower()}/{topic_name}.json'
         else:
             file_name: str = f'{topic_prefix}/{topic_name}.json'

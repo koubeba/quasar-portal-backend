@@ -4,8 +4,12 @@ from flask_cors import CORS
 from typing import Any, Dict, List, Optional, Tuple
 from .kafka_context import KafkaContext
 from .gcs_connector import GCSConnector
+from .file_format import FileFormat
+from .topic_type import TopicType
 from .errors.configuration_error import ConfigurationError
 from .errors.topic_not_existing import TopicNotExisting
+from .errors.invalid_format import InvalidFormat
+from .errors.connection_error import BrokerConnectionError
 import json
 import secrets
 import os
@@ -20,6 +24,7 @@ CONF_KEYS: List[str] = [KAFKA_BROKERS_KEY, ZOOKEEPER_SERVER_KEY]
 
 
 BAD_REQUEST: int = 400
+SERVICE_UNAVAILABLE: int = 503
 
 
 def read_json_configuration() -> Dict[str, str]:
@@ -35,6 +40,18 @@ def handle_topic_not_existing(topic_name: str) -> Tuple[Dict[str, str], int]:
     return ({
         'error': f'Topic {topic_name} not existing'
     }, BAD_REQUEST)
+
+
+def handle_invalid_format(format_name: str) -> Tuple[Dict[str, str], int]:
+    return ({
+        'error': f'Invalid file format {format_name}'
+    }, BAD_REQUEST)
+
+
+def handle_broker_connection_error() -> Tuple[Dict[str, str], int]:
+    return ({
+        'error': f'Connection to broker lost!'
+    }, SERVICE_UNAVAILABLE)
 
 
 def create_app() -> Flask:
@@ -111,23 +128,24 @@ def create_app() -> Flask:
     @cache.cached(timeout=300)
     def get_schema():
         topic_name: str = request.args.get('topic', type=str)
-        in_out, topic_name = topic_name.split('-', 1)
+        topic_type_arg, topic_name = topic_name.split('-', 1)
+        file_format_arg = None
         try:
-            if in_out.lower() == 'in':
-                topic_name, file_format = topic_name.rsplit('-', 1)
-            else:
-                file_format = None
+            if topic_type_arg.lower() == str(TopicType.to_prefix()):
+                topic_name, file_format_arg = topic_name.rsplit('-', 1)
             return {
                 'data': {
-                    'schema': gcs_connector.fetch_schema(in_topic=in_out,
-                                                             topic_name=topic_name,
-                                                             file_format=None)
+                    'schema': gcs_connector.fetch_schema(topic_name=topic_name,
+                                                         topic_prefix=topic_type_arg,
+                                                         file_format=file_format_arg)
                 }
             }
         except TopicNotExisting:
             error_json, error_code = handle_topic_not_existing(topic_name)
             return error_json, error_code
-        # TODO: add format error if anything else than CSV or JSON
+        except InvalidFormat:
+            error_json, error_code = handle_invalid_format(file_format_arg)
+            return error_json, error_code
 
     @app.route('/get_in_topics_offsets', methods=['GET'])
     def get_in_topics_offsets():
@@ -173,6 +191,9 @@ def create_app() -> Flask:
                 kafka_context.send_message(topic_name, message)
             except TopicNotExisting:
                 error_json, error_code = handle_topic_not_existing(topic_name)
+                return error_json, error_code
+            except BrokerConnectionError:
+                error_json, error_code = handle_broker_connection_error()
                 return error_json, error_code
             return {
                 'data': {
