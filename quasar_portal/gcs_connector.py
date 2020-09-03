@@ -16,10 +16,10 @@ class GCSConnector:
             "quasar_models", delimiter="/")]
         return model_types
 
-    def fetch_schema(self, in_topic: str = "in", topic_name: str = 'test', file_format: Optional[str] = None) -> str:
-        if file_format:
-            file_name: str = f'{in_topic}/{file_format.lower()}/{topic_name}.json'
+    def fetch_schema(self, topic_name: str, topic_prefix: str = "in", file_format: Optional[str] = None) -> str:
+        if topic_prefix == "in" and file_format:
+            file_name: str = f'in/{file_format.lower()}/{topic_name}.json'
         else:
-            file_name: str = f'{in_topic}/{topic_name}.json'
+            file_name: str = f'{topic_prefix}/{topic_name}.json'
         blob = self.__schemas_bucket.get_blob(file_name)
         return (blob.download_as_string()).decode('utf-8')

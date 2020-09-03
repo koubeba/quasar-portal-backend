@@ -26,8 +26,8 @@ class KafkaContext:
 
     @property
     @cachetools.func.ttl_cache(ttl=300)
-    def client(self) -> Cluster:
-        return self.__create_kafka_client()
+    def cluster(self) -> Cluster:
+        return self.__create_kafka_cluster()
 
     def get_connection_information(self) -> int:
         brokers: Dict[str, Broker] = self.__get_brokers()
@@ -85,9 +85,7 @@ class KafkaContext:
             partitions: List[Partition] = consumer.partitions
             offsets = [(p, op - n)
                        for p, op in consumer.held_offsets.items()]
-            # if we want to rewind before the beginning of the partition, limit to beginning
             offsets = [(partitions[p], (o if o > -1 else -2)) for p, o in offsets]
-            # reset the consumer's offsets
             consumer.reset_offsets(offsets)
         result: List[Dict[str, str]] = []
         for message in islice(consumer, n):
@@ -96,7 +94,7 @@ class KafkaContext:
         return result
 
     def list_topics(self) -> List[str]:
-        return [t.decode('utf-8') for t in list(self.client.topics.keys())]
+        return [t.decode('utf-8') for t in list(self.cluster.topics.keys())]
 
     def list_in_topics(self, file_format: str) -> List[str]:
         return [topic for topic in self.list_topics() if
@@ -105,18 +103,18 @@ class KafkaContext:
     def list_out_topics(self) -> List[str]:
         return [topic for topic in self.list_topics() if topic.startswith(OUT_PREFIX)]
 
-    def __create_kafka_client(self) -> Cluster:
-        print(f'Creating a Kafka Producer with bootstrap servers {self.__bootstrap_servers}')
+    def __create_kafka_cluster(self) -> Cluster:
+        print(f'Creating a Kafka Cluster with bootstrap servers {self.__bootstrap_servers}')
         return Cluster(hosts=self.__bootstrap_servers,
                        handler=ThreadingHandler(),
                        zookeeper_hosts=self.__zookeper_servers,
                        broker_version="1.0.0")
 
     def __get_brokers(self) -> Dict[str, Broker]:
-        return self.client.brokers
+        return self.cluster.brokers
 
     def __get_topic(self, topic_name: str) -> Topic:
-        topics = self.client.topics
+        topics = self.cluster.topics
         binary_topic_name = topic_name.encode('utf-8')
         if binary_topic_name not in topics:
             raise TopicNotExisting(topic_name)

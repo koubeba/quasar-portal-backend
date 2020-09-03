@@ -115,21 +115,15 @@ def create_app() -> Flask:
         try:
             if in_out.lower() == 'in':
                 topic_name, file_format = topic_name.rsplit('-', 1)
-                return {
-                    'data': {
-                        'schema': gcs_connector.fetch_schema(in_topic=in_out,
-                                                             topic_name=topic_name,
-                                                             file_format=file_format)
-                    }
-                }
             else:
-                return {
-                    'data': {
-                        'schema': gcs_connector.fetch_schema(in_topic=in_out,
+                file_format = None
+            return {
+                'data': {
+                    'schema': gcs_connector.fetch_schema(in_topic=in_out,
                                                              topic_name=topic_name,
                                                              file_format=None)
-                    }
                 }
+            }
         except TopicNotExisting:
             error_json, error_code = handle_topic_not_existing(topic_name)
             return error_json, error_code
@@ -180,7 +174,11 @@ def create_app() -> Flask:
             except TopicNotExisting:
                 error_json, error_code = handle_topic_not_existing(topic_name)
                 return error_json, error_code
-            return f'Sent message to topic {topic_name}!'
+            return {
+                'data': {
+                    'topic': topic_name
+                }
+            }
         else:
             return 'No message was provided', BAD_REQUEST
 
