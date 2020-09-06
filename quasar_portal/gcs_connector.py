@@ -21,13 +21,17 @@ class GCSConnector:
         return model_types
 
     def fetch_schema(self, topic_name: str,
-                     topic_prefix: str = str(TopicType.INCOMING), file_format: Optional[str] = None) -> str:
-        if file_format not in [str(ff) for ff in FileFormat]:
+                     topic_prefix: str = str(TopicType.INCOMING), file_format: Optional[str] = 'csv') -> str:
+        if file_format and file_format not in [str(ff) for ff in FileFormat]:
             raise InvalidFormat(file_format)
 
-        if topic_prefix == str(TopicType.INCOMING) and file_format:
+        if not file_format:
+            file_format: str = 'csv'
+
+        if topic_prefix == str(TopicType.INCOMING):
             file_name: str = f'in/{file_format.lower()}/{topic_name}.json'
         else:
             file_name: str = f'{topic_prefix}/{topic_name}.json'
+        print(file_name)
         blob = self.__schemas_bucket.get_blob(file_name)
         return (blob.download_as_string()).decode('utf-8')

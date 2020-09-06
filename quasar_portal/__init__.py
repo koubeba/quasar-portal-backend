@@ -59,8 +59,8 @@ def create_app() -> Flask:
     configuration: Dict[str, str] = read_json_configuration()
     app.config.from_mapping(
         SECRET_KEY=secrets.token_urlsafe(32),
-        KAFKA_BOOTSTRAP_SERVERS= configuration[KAFKA_BROKERS_KEY],
-        ZOOKEEPER_SERVERS= configuration[ZOOKEEPER_SERVER_KEY]
+        KAFKA_BOOTSTRAP_SERVERS=configuration[KAFKA_BROKERS_KEY],
+        ZOOKEEPER_SERVERS=configuration[ZOOKEEPER_SERVER_KEY]
     )
     cache = Cache(config={'CACHE_TYPE': 'simple'})
     CORS(app)
@@ -99,10 +99,10 @@ def create_app() -> Flask:
     @app.route('/list_in_topics', methods=['GET'])
     @cache.cached(timeout=60)
     def list_in_topics():
-        file_format: str = request.args.get('format', type=str)
+        file_format_arg: str = request.args.get('format', type=str)
         return {
             'data': {
-                'topics': kafka_context.list_in_topics(file_format)
+                'topics': kafka_context.list_in_topics(file_format_arg)
             }
         }
 
@@ -131,7 +131,7 @@ def create_app() -> Flask:
         topic_type_arg, topic_name = topic_name.split('-', 1)
         file_format_arg = None
         try:
-            if topic_type_arg.lower() == str(TopicType.to_prefix()):
+            if f'{topic_type_arg.lower()}-' == str(TopicType.INCOMING.to_prefix()):
                 topic_name, file_format_arg = topic_name.rsplit('-', 1)
             return {
                 'data': {

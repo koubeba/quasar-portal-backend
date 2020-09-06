@@ -6,7 +6,7 @@ class TopicType(Enum):
     OUTCOMING = auto()
 
     def __str__(self):
-        return self.name.lower()
+        return self.name.lower().replace("coming", "")
 
-    def to_prefix(self):
-        return f'{self.name.lower()}-'
+    def to_prefix(self) -> str:
+        return f'{self.name.lower().replace("coming", "")}-'

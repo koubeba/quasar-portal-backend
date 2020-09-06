@@ -107,7 +107,9 @@ class KafkaContext:
     def list_topics(self) -> List[str]:
         return [t.decode('utf-8') for t in list(self.cluster.topics.keys())]
 
-    def list_in_topics(self, file_format: str) -> List[str]:
+    def list_in_topics(self, file_format: str = 'csv') -> List[str]:
+        if not file_format or file_format == 'undefined':
+            file_format: str = 'csv'
         return [topic for topic in self.list_topics() if
                 (topic.startswith(TopicType.INCOMING.to_prefix()) and topic.endswith(file_format.lower()))]
 

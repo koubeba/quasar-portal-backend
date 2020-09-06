@@ -1,6 +1,6 @@
 {
-  "kafka_brokers": "35.241.252.88:9092,23.251.128.142:9092,34.76.32.95:9092",
-  "zookeeper_server": "35.241.252.88:2181",
+  "kafka_brokers": "35.233.92.142:9092,104.155.12.70:9092,35.241.186.30:9092",
+  "zookeeper_server": "35.233.92.142:2181",
   "gcs_model_bucket": "quasar_models",
   "gcs_notebook_bucket": "quasar_notebooks"
 }
